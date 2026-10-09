@@ -17,10 +17,33 @@
   <!-- Header -->
   <header class="glass sticky top-0 z-40 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
     <h1 class="text-2xl font-black text-amber-500 tracking-wider">السردار</h1>
-    <div id="user-badge" class="text-sm bg-gray-800 border border-gray-700 px-3 py-1.5 rounded-full text-gray-300">
-      جاري التحميل...
+    <div class="flex items-center gap-2">
+      <div id="user-badge" class="text-sm bg-gray-800 border border-gray-700 px-3 py-1.5 rounded-full text-gray-300">
+        جاري التحميل...
+      </div>
+      <button onclick="toggleLoginModal()" class="text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-full">
+        تغيير الحساب
+      </button>
     </div>
   </header>
+
+  <!-- Login Modal -->
+  <div id="login-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <div class="glass max-w-md w-full p-6 rounded-2xl border border-gray-700 space-y-4">
+      <h2 class="text-xl font-bold text-center text-amber-400">تسجيل الدخول</h2>
+      <p class="text-sm text-gray-400 text-center">اختر صفة الدخول لعرض التطبيق</p>
+      
+      <button onclick="setUserRole('student')" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl border border-gray-600 flex items-center justify-center gap-2">
+        👤 دخول كـ طالب (عرض المحتوى فقط)
+      </button>
+      
+      <button onclick="setUserRole('admin')" class="w-full bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2">
+        👑 دخول كـ أدمن (رفع وحذف)
+      </button>
+
+      <button onclick="toggleLoginModal()" class="w-full text-xs text-gray-400 hover:text-white pt-2">إغلاق</button>
+    </div>
+  </div>
 
   <!-- Main Container -->
   <main class="max-w-2xl mx-auto px-4 pt-6">
@@ -47,15 +70,48 @@
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0eGZldGhpbWRjdXRmdHhweHN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1Nzg0MTgsImV4cCI6MjEwNzE1NDQxOH0.kyNLNI86eVYFYbvguAm7hJa0JUWMitF4RZhv8u9OY7o";
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let currentUser = JSON.parse(localStorage.getItem('sardar_user') || '{"role":"admin","name":"الأدمن"}');
+    let currentUser = JSON.parse(localStorage.getItem('sardar_user') || '{"role":"student","name":"طالب"}');
 
     document.addEventListener('DOMContentLoaded', () => {
-      document.getElementById('user-badge').textContent = currentUser.role === 'admin' ? '👑 الأدمن' : `👤 ${currentUser.name}`;
-      if (currentUser.role === 'admin') {
-        document.getElementById('admin-panel').classList.remove('hidden');
-      }
+      updateUserUI();
       loadPosts();
     });
+
+    function updateUserUI() {
+      const badge = document.getElementById('user-badge');
+      const adminPanel = document.getElementById('admin-panel');
+
+      if (currentUser.role === 'admin') {
+        badge.textContent = '👑 الأدمن';
+        adminPanel.classList.remove('hidden');
+      } else {
+        badge.textContent = '👤 طالب';
+        adminPanel.classList.add('hidden');
+      }
+    }
+
+    function toggleLoginModal() {
+      const modal = document.getElementById('login-modal');
+      modal.classList.toggle('hidden');
+    }
+
+    function setUserRole(role) {
+      if (role === 'admin') {
+        const password = prompt("أدخل كلمة سر الأدمن:");
+        if (password !== "1234") { // يمكنك تغيير كلمة السر هنا
+          alert("كلمة السر غير صحيحة!");
+          return;
+        }
+        currentUser = { role: 'admin', name: 'الأدمن' };
+      } else {
+        currentUser = { role: 'student', name: 'طالب' };
+      }
+
+      localStorage.setItem('sardar_user', JSON.stringify(currentUser));
+      updateUserUI();
+      toggleLoginModal();
+      loadPosts();
+    }
 
     async function loadPosts() {
       const feed = document.getElementById('feed');
@@ -105,14 +161,11 @@
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}.${fileExt}`;
 
-        // Upload to Supabase Storage Bucket ('media')
         const { data, error: uploadError } = await supabaseClient.storage.from('media').upload(fileName, file);
         if (uploadError) throw uploadError;
 
-        // Get Public URL
         const { data: urlData } = supabaseClient.storage.from('media').getPublicUrl(fileName);
 
-        // Insert metadata record into Database
         const { error: dbError } = await supabaseClient.from('posts').insert([{
           title: title,
           file_url: urlData.publicUrl,
