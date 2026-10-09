@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>السردار - Al-Sardar</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Cairo', sans-serif; background-color: #0b0f19; color: #f3f4f6; }
+    .glass { background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+  </style>
+</head>
+<body class="min-h-screen pb-12">
+
+  <!-- Header -->
+  <header class="glass sticky top-0 z-40 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+    <h1 class="text-2xl font-black text-amber-500 tracking-wider">السردار</h1>
+    <div id="user-badge" class="text-sm bg-gray-800 border border-gray-700 px-3 py-1.5 rounded-full text-gray-300">
+      جاري التحميل...
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-2xl mx-auto px-4 pt-6">
+
+    <!-- Admin Upload Panel -->
+    <div id="admin-panel" class="hidden mb-6 glass p-4 rounded-2xl border border-amber-500/30">
+      <h2 class="text-lg font-bold text-amber-400 mb-2">لوحة الأدمن - إضافة محتوى</h2>
+      <input type="file" id="media-input" accept="image/*,video/*" class="hidden" onchange="handleFileSelect(event)">
+      <button id="upload-btn" onclick="document.getElementById('media-input').click()" class="w-full bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        رفع فيديو أو صورة جديدة
+      </button>
+      <div id="upload-status" class="hidden text-center text-sm text-amber-300 mt-2 font-semibold">جاري جلب الملف ورفعه إلى السحابة...</div>
+    </div>
+
+    <!-- Feed -->
+    <div id="feed" class="space-y-6">
+      <!-- Media Cards dynamically loaded -->
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = "https://stxfethimdcutftxpxsu.supabase.co";
+    const SUPABASE_KEY = "EyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0eGZldGhpbWRjdXRmdHhweHN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1Nzg0MTgsImV4cCI6MjEwNzE1NDQxOH0.kyNLNI86eVYFYbvguAm7hJa0JUWMitF4RZhv8u9OY7o";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let currentUser = JSON.parse(localStorage.getItem('sardar_user') || '{"role":"admin","name":"الأدمن"}');
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('user-badge').textContent = currentUser.role === 'admin' ? '👑 الأدمن' : `👤 ${currentUser.name}`;
+      if (currentUser.role === 'admin') {
+        document.getElementById('admin-panel').classList.remove('hidden');
+      }
+      loadPosts();
+    });
+
+    async function loadPosts() {
+      const feed = document.getElementById('feed');
+      feed.innerHTML = '<div class="text-center text-gray-400 py-10">جاري تحميل المحتوى من السحابة...</div>';
+
+      const { data: posts, error } = await supabaseClient.from('posts').select('*').order('created_at', { ascending: false });
+      
+      if (error) {
+        feed.innerHTML = `<div class="text-center text-red-400 py-10">خطأ في التحميل: ${error.message}</div>`;
+        return;
+      }
+
+      if (!posts || posts.length === 0) {
+        feed.innerHTML = '<div class="text-center text-gray-500 py-12">لا يوجد محتوى معروض حالياً.</div>';
+        return;
+      }
+
+      feed.innerHTML = posts.map(post => `
+        <div class="glass rounded-2xl overflow-hidden border border-gray-800">
+          <div class="p-4 border-b border-gray-800/50 flex justify-between items-center">
+            <h3 class="font-bold text-lg text-white">${post.title}</h3>
+            ${currentUser.role === 'admin' ? `<button onclick="deletePost('${post.id}', '${post.file_url}')" class="text-red-400 text-xs bg-red-500/10 hover:bg-red-500/20 px-2.5 py-1 rounded-lg">حذف</button>` : ''}
+          </div>
+          <div>
+            ${post.file_type && post.file_type.startsWith('video') 
+              ? `<video src="${post.file_url}" controls class="w-full max-h-[500px] bg-black"></video>`
+              : `<img src="${post.file_url}" class="w-full max-h-[500px] object-cover" />`
+            }
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const title = prompt("أدخل عنوان المقطع أو الصورة:");
+      if (!title) return;
+
+      const btn = document.getElementById('upload-btn');
+      const status = document.getElementById('upload-status');
+      btn.disabled = true;
+      status.classList.remove('hidden');
+
+      try {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}.${fileExt}`;
+
+        // Upload to Supabase Storage Bucket ('media')
+        const { data, error: uploadError } = await supabaseClient.storage.from('media').upload(fileName, file);
+        if (uploadError) throw uploadError;
+
+        // Get Public URL
+        const { data: urlData } = supabaseClient.storage.from('media').getPublicUrl(fileName);
+
+        // Insert metadata record into Database
+        const { error: dbError } = await supabaseClient.from('posts').insert([{
+          title: title,
+          file_url: urlData.publicUrl,
+          file_type: file.type
+        }]);
+
+        if (dbError) throw dbError;
+
+        loadPosts();
+      } catch (err) {
+        alert("حدث خطأ أثناء الرفع: " + err.message);
+      } finally {
+        btn.disabled = false;
+        status.classList.add('hidden');
+        e.target.value = '';
+      }
+    }
+
+    async function deletePost(id, fileUrl) {
+      if (!confirm("هل أنت تأكد من حذف هذا المحتوى؟")) return;
+      
+      const fileName = fileUrl.split('/').pop();
+      await supabaseClient.storage.from('media').remove([fileName]);
+      await supabaseClient.from('posts').delete().eq('id', id);
+      loadPosts();
+    }
+  </script>
+</body>
+</html>
